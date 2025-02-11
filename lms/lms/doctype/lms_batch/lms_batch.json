@@ -2,7 +2,6 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "autoname": "format: CLS-{#####}",
  "creation": "2022-11-09 16:14:05.876933",
  "default_view": "List",
  "doctype": "DocType",
@@ -33,7 +32,6 @@
   "batch_details",
   "batch_details_raw",
   "section_break_jgji",
-  "students",
   "courses",
   "assessment_tab",
   "assessment",
@@ -86,12 +84,6 @@
   {
    "fieldname": "section_break_6",
    "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "students",
-   "fieldtype": "Table",
-   "label": "Students",
-   "options": "Batch Student"
   },
   {
    "fieldname": "courses",
@@ -329,12 +321,16 @@
   }
  ],
  "index_web_pages_for_search": 1,
- "links": [],
- "modified": "2024-11-18 16:28:41.336928",
+ "links": [
+  {
+   "link_doctype": "LMS Batch Enrollment",
+   "link_fieldname": "batch"
+  }
+ ],
+ "modified": "2025-02-10 12:01:22.476325",
  "modified_by": "Administrator",
  "module": "LMS",
  "name": "LMS Batch",
- "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {

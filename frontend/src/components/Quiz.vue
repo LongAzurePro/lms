@@ -40,12 +40,14 @@
 			</div>
 		</div>
 
-		<div v-if="quiz.data.duration" class="flex items-center space-x-2 my-4">
-			<span class="text-gray-600 text-xs"> {{ __('Time') }}: </span>
+		<div v-if="quiz.data.duration" class="flex flex-col space-x-1 my-4">
+			<div class="mb-2">
+				<span class=""> {{ __('Time') }}: </span>
+				<span class="font-semibold">
+					{{ formatTimer(timer) }}
+				</span>
+			</div>
 			<ProgressBar :progress="timerProgress" />
-			<span class="font-semibold">
-				{{ formatTimer(timer) }}
-			</span>
 		</div>
 
 		<div v-if="activeQuestion == 0">
@@ -118,15 +120,17 @@
 								class="w-3.5 h-3.5 text-gray-900 rounded-sm focus:ring-gray-200"
 								@change="markAnswer(index)"
 							/>
-
 							<div
 								v-else-if="quiz.data.show_answers"
 								v-for="(answer, idx) in showAnswers"
 							>
 								<div v-if="index - 1 == idx">
-									<CheckCircle v-if="answer" class="w-4 h-4 text-green-500" />
+									<CheckCircle
+										v-if="answer == 1"
+										class="w-4 h-4 text-green-500"
+									/>
 									<MinusCircle
-										v-else-if="questionDetails.data[`is_correct_${index}`]"
+										v-else-if="answer == 2"
 										class="w-4 h-4 text-green-500"
 									/>
 									<XCircle
@@ -271,6 +275,7 @@
 import {
 	Badge,
 	Button,
+	call,
 	createResource,
 	ListView,
 	TextEditor,
@@ -280,6 +285,7 @@ import { ref, watch, reactive, inject, computed } from 'vue'
 import { createToast } from '@/utils/'
 import { CheckCircle, XCircle, MinusCircle } from 'lucide-vue-next'
 import { timeAgo } from '@/utils'
+import { useRouter } from 'vue-router'
 import ProgressBar from '@/components/ProgressBar.vue'
 
 const user = inject('$user')
@@ -291,6 +297,7 @@ let questions = reactive([])
 const possibleAnswer = ref(null)
 const timer = ref(0)
 let timerInterval = null
+const router = useRouter()
 
 const props = defineProps({
 	quizName: {
@@ -309,6 +316,9 @@ const quiz = createResource({
 	},
 	cache: ['quiz', props.quizName],
 	auto: true,
+	transform(data) {
+		data.duration = parseInt(data.duration)
+	},
 	onSuccess(data) {
 		populateQuestions()
 		setupTimer()
@@ -496,8 +506,8 @@ const checkAnswer = () => {
 				selectedOptions.forEach((option, index) => {
 					if (option) {
 						showAnswers[index] = option && data[index]
-					} else if (questionDetails.data[`is_correct_${index + 1}`]) {
-						showAnswers[index] = 0
+					} else if (data[index] == 2) {
+						showAnswers[index] = 2
 					} else {
 						showAnswers[index] = undefined
 					}
@@ -560,6 +570,7 @@ const createSubmission = () => {
 		{},
 		{
 			onSuccess(data) {
+				markLessonProgress()
 				if (quiz.data && quiz.data.max_attempts) attempts.reload()
 				if (quiz.data.duration) clearInterval(timerInterval)
 			},
@@ -581,6 +592,17 @@ const getInstructions = (question) => {
 		if (question.multiple) return __('Choose all answers that apply')
 		else return __('Choose one answer')
 	else return __('Type your answer')
+}
+
+const markLessonProgress = () => {
+	console.log(router)
+	if (router.currentRoute.value.name == 'Lesson') {
+		call('lms.lms.api.mark_lesson_progress', {
+			course: router.currentRoute.value.params.courseName,
+			chapter_number: router.currentRoute.value.params.chapterNumber,
+			lesson_number: router.currentRoute.value.params.lessonNumber,
+		})
+	}
 }
 
 const getSubmissionColumns = () => {

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { usersStore } from './stores/user'
 import { sessionStore } from './stores/session'
+import { useSettings } from './stores/settings'
 
 let defaultRoute = '/courses'
 const routes = [
@@ -132,12 +133,6 @@ const routes = [
 		props: true,
 	},
 	{
-		path: '/assignment-submission/:assignmentName/:submissionName',
-		name: 'AssignmentSubmission',
-		component: () => import('@/pages/AssignmentSubmission.vue'),
-		props: true,
-	},
-	{
 		path: '/certified-participants',
 		name: 'CertifiedParticipants',
 		component: () => import('@/pages/CertifiedParticipants.vue'),
@@ -193,6 +188,28 @@ const routes = [
 		name: 'Programs',
 		component: () => import('@/pages/Programs.vue'),
 	},
+	{
+		path: '/assignments',
+		name: 'Assignments',
+		component: () => import('@/pages/Assignments.vue'),
+	},
+	{
+		path: '/assignments/:assignmentID',
+		name: 'AssignmentForm',
+		component: () => import('@/pages/AssignmentForm.vue'),
+		props: true,
+	},
+	{
+		path: '/assignment-submission/:assignmentID/:submissionName',
+		name: 'AssignmentSubmission',
+		component: () => import('@/pages/AssignmentSubmission.vue'),
+		props: true,
+	},
+	{
+		path: '/assignment-submissions',
+		name: 'AssignmentSubmissionList',
+		component: () => import('@/pages/AssignmentSubmissionList.vue'),
+	},
 ]
 
 let router = createRouter({
@@ -201,24 +218,24 @@ let router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-	const { userResource, allUsers } = usersStore()
-	let { isLoggedIn } = sessionStore()
+	const { userResource } = usersStore()
+	const { isLoggedIn } = sessionStore()
+	const { allowGuestAccess } = useSettings()
 
 	try {
 		if (isLoggedIn) {
 			await userResource.promise
 		}
-		if (
-			isLoggedIn &&
-			(to.name == 'Lesson' ||
-				to.name == 'Batch' ||
-				to.name == 'Notifications' ||
-				to.name == 'Badge')
-		) {
-			await allUsers.promise
-		}
 	} catch (error) {
 		isLoggedIn = false
+	}
+
+	if (!isLoggedIn) {
+		await allowGuestAccess.promise
+		if (!allowGuestAccess.data) {
+			window.location.href = '/login'
+			return
+		}
 	}
 	return next()
 })

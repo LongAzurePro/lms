@@ -1,7 +1,9 @@
 import { toast } from 'frappe-ui'
 import { useTimeAgo } from '@vueuse/core'
 import { Quiz } from '@/utils/quiz'
+import { Assignment } from '@/utils/assignment'
 import { Upload } from '@/utils/upload'
+import { Markdown } from '@/utils/markdownParser'
 import Header from '@editorjs/header'
 import Paragraph from '@editorjs/paragraph'
 import { CodeBox } from '@/utils/code'
@@ -147,11 +149,21 @@ export function htmlToText(html) {
 
 export function getEditorTools() {
 	return {
-		header: Header,
+		header: {
+			class: Header,
+			config: {
+				placeholder: 'Header',
+			},
+		},
 		quiz: Quiz,
+		assignment: Assignment,
 		upload: Upload,
+		markdown: Markdown,
 		image: SimpleImage,
-		table: Table,
+		table: {
+			class: Table,
+			inlineToolbar: true,
+		},
 		paragraph: {
 			class: Paragraph,
 			inlineToolbar: true,
@@ -170,6 +182,7 @@ export function getEditorTools() {
 		},
 		list: {
 			class: NestedList,
+			inlineToolbar: true,
 			config: {
 				defaultStyle: 'ordered',
 			},
@@ -519,4 +532,22 @@ export const validateFile = (file) => {
 	if (!['jpg', 'jpeg', 'png', 'webp'].includes(extension)) {
 		return __('Only image file is allowed.')
 	}
+}
+
+export const escapeHTML = (text) => {
+	if (!text) return ''
+	let escape_html_mapping = {
+		'&': '&amp;',
+		'<': '&lt;',
+		'>': '&gt;',
+		'"': '&quot;',
+		"'": '&#39;',
+		'`': '&#x60;',
+		'=': '&#x3D;',
+	}
+
+	return String(text).replace(
+		/[&<>"'`=]/g,
+		(char) => escape_html_mapping[char] || char
+	)
 }

@@ -132,6 +132,7 @@ const renderEditor = (holder) => {
 		holder: holder,
 		tools: getEditorTools(true),
 		autofocus: true,
+		defaultBlock: 'markdown',
 	})
 }
 
@@ -395,9 +396,9 @@ const createNewLesson = () => {
 						onSuccess() {
 							capture('lesson_created')
 							showToast('Success', 'Lesson created successfully', 'check')
-							if (!settingsStore.onboardingDetails.data?.is_onboarded) {
+							/* if (!settingsStore.onboardingDetails.data?.is_onboarded) {
 								settingsStore.onboardingDetails.reload()
-							}
+							} */
 							lessonDetails.reload()
 						},
 					}
@@ -617,5 +618,9 @@ updateDocumentTitle(pageMeta)
 iframe {
 	border-top: 3px solid theme('colors.gray.700');
 	border-bottom: 3px solid theme('colors.gray.700');
+}
+
+.tc-table {
+	border-left: 1px solid #e8e8eb;
 }
 </style>

@@ -450,24 +450,6 @@ def get_signup_optin_checks():
 	return (", ").join(links)
 
 
-def get_popular_courses():
-	courses = frappe.get_all("LMS Course", {"published": 1, "upcoming": 0})
-	course_membership = []
-
-	for course in courses:
-		course_membership.append(
-			{
-				"course": course.name,
-				"members": cint(frappe.db.count("LMS Enrollment", {"course": course.name})),
-			}
-		)
-
-	course_membership = sorted(
-		course_membership, key=lambda x: x.get("members"), reverse=True
-	)
-	return course_membership[:3]
-
-
 def format_amount(amount, currency):
 	amount_reduced = amount / 1000
 	if amount_reduced < 1:
@@ -874,26 +856,6 @@ def is_onboarding_complete():
 	}
 
 
-def has_submitted_assessment(assessment, type, member=None):
-	if not member:
-		member = frappe.session.user
-
-	doctype = (
-		"LMS Assignment Submission" if type == "LMS Assignment" else "LMS Quiz Submission"
-	)
-	docfield = "assignment" if type == "LMS Assignment" else "quiz"
-
-	filters = {}
-	filters[docfield] = assessment
-	filters["member"] = member
-	return frappe.db.exists(doctype, filters)
-
-
-def has_graded_assessment(submission):
-	status = frappe.db.get_value("LMS Assignment Submission", submission, "status")
-	return False if status == "Not Graded" else True
-
-
 def get_evaluator(course, batch):
 	evaluator = None
 	evaluator = frappe.db.get_value(
@@ -955,7 +917,7 @@ def check_multicurrency(amount, currency, country=None, amount_usd=None):
 
 	# Conversion logic starts here. Exchange rate is fetched and amount is converted.
 	exchange_rate = get_current_exchange_rate(currency, "USD")
-	amount = amount * exchange_rate
+	amount = flt(amount * exchange_rate, 2)
 	currency = "USD"
 
 	# Check if the amount should be rounded and then apply rounding
@@ -1050,6 +1012,7 @@ def get_course_details(course):
 	course_details.tags = course_details.tags.split(",") if course_details.tags else []
 
 	course_details.instructors = get_instructors(course_details.name)
+	# course_details.is_instructor = is_instructor(course_details.name)
 	if course_details.paid_course:
 		"""course_details.course_price, course_details.currency = check_multicurrency(
 		        course_details.course_price, course_details.currency, None, course_details.amount_usd
@@ -1068,7 +1031,6 @@ def get_course_details(course):
 			["name", "course", "current_lesson", "progress", "member"],
 			as_dict=1,
 		)
-		course_details.is_instructor = is_instructor(course_details.name)
 
 	if course_details.membership and course_details.membership.current_lesson:
 		course_details.current_lesson = get_lesson_index(
@@ -1231,21 +1193,6 @@ def get_neighbour_lesson(course, chapter, lesson):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_batches():
-	batches = []
-	filters = {}
-	if frappe.session.user == "Guest":
-		filters.update({"start_date": [">=", getdate()], "published": 1})
-	batch_list = frappe.get_all("LMS Batch", filters)
-
-	for batch in batch_list:
-		batches.append(get_batch_details(batch.name))
-
-	batches = categorize_batches(batches)
-	return batches
-
-
-@frappe.whitelist(allow_guest=True)
 def get_batch_details(batch):
 	batch_details = frappe.db.get_value(
 		"LMS Batch",
@@ -1280,8 +1227,9 @@ def get_batch_details(batch):
 		"Batch Course", filters={"parent": batch}, fields=["course", "title", "evaluator"]
 	)
 	batch_details.students = frappe.get_all(
-		"Batch Student", {"parent": batch}, pluck="student"
+		"LMS Batch Enrollment", {"batch": batch}, pluck="member"
 	)
+
 	if batch_details.paid_batch and batch_details.start_date >= getdate():
 		batch_details.amount, batch_details.currency = check_multicurrency(
 			batch_details.amount, batch_details.currency, None, batch_details.amount_usd
@@ -1311,7 +1259,7 @@ def categorize_batches(batches):
 
 		if frappe.session.user != "Guest":
 			if frappe.db.exists(
-				"Batch Student", {"student": frappe.session.user, "parent": batch.name}
+				"LMS Batch Enrollment", {"member": frappe.session.user, "batch": batch.name}
 			):
 				enrolled.append(batch)
 
@@ -1347,7 +1295,6 @@ def get_question_details(question):
 	for i in range(1, 5):
 		fields.append(f"option_{i}")
 		fields.append(f"explanation_{i}")
-		fields.append(f"is_correct_{i}")
 
 	question_details = frappe.db.get_value("LMS Question", question, fields, as_dict=1)
 	return question_details
@@ -1441,7 +1388,7 @@ def get_quiz_details(assessment, member):
 	if len(existing_submission):
 		assessment.submission = existing_submission[0]
 		assessment.completed = True
-		assessment.status = assessment.submission.score
+		assessment.status = assessment.submission.percentage or assessment.submission.score
 	else:
 		assessment.status = "Not Attempted"
 		assessment.color = "red"
@@ -1459,13 +1406,11 @@ def get_quiz_details(assessment, member):
 @frappe.whitelist()
 def get_batch_students(batch):
 	students = []
-
 	students_list = frappe.get_all(
-		"Batch Student", filters={"parent": batch}, fields=["student", "name"]
+		"LMS Batch Enrollment", filters={"batch": batch}, fields=["member", "name"]
 	)
 
-	batch_courses = frappe.get_all("Batch Course", {"parent": batch}, pluck="course")
-
+	batch_courses = frappe.get_all("Batch Course", {"parent": batch}, ["course", "title"])
 	assessments = frappe.get_all(
 		"LMS Assessment",
 		filters={"parent": batch},
@@ -1477,33 +1422,100 @@ def get_batch_students(batch):
 		assessments_completed = 0
 		detail = frappe.db.get_value(
 			"User",
-			student.student,
+			student.member,
 			["full_name", "email", "username", "last_active", "user_image"],
 			as_dict=True,
 		)
 		detail.last_active = format_datetime(detail.last_active, "dd MMM YY")
 		detail.name = student.name
-		students.append(detail)
+		detail.courses = frappe._dict()
+		detail.assessments = frappe._dict()
 
+		""" Iterate through courses and track their progress """
 		for course in batch_courses:
 			progress = frappe.db.get_value(
-				"LMS Enrollment", {"course": course, "member": student.student}, "progress"
+				"LMS Enrollment", {"course": course.course, "member": student.member}, "progress"
 			)
-
+			detail.courses[course.title] = progress
 			if progress == 100:
 				courses_completed += 1
 
-		detail.courses_completed = courses_completed
-
+		""" Iterate through assessments and track their progress """
 		for assessment in assessments:
-			if has_submitted_assessment(
-				assessment.assessment_name, assessment.assessment_type, student.student
-			):
+			title = frappe.db.get_value(
+				assessment.assessment_type, assessment.assessment_name, "title"
+			)
+			assessment_info = has_submitted_assessment(
+				assessment.assessment_name, assessment.assessment_type, student.member
+			)
+			detail.assessments[title] = assessment_info
+
+			if assessment_info.result == "Passed":
 				assessments_completed += 1
 
+		detail.courses_completed = courses_completed
 		detail.assessments_completed = assessments_completed
+		if len(batch_courses) + len(assessments):
+			detail.progress = flt(
+				(
+					(courses_completed + assessments_completed)
+					/ (len(batch_courses) + len(assessments))
+					* 100
+				),
+				2,
+			)
+		else:
+			detail.progress = 0
 
+		students.append(detail)
+		students = sorted(students, key=lambda x: x.progress, reverse=True)
 	return students
+
+
+def has_submitted_assessment(assessment, assessment_type, member=None):
+	if not member:
+		member = frappe.session.user
+
+	if assessment_type == "LMS Assignment":
+		doctype = "LMS Assignment Submission"
+		docfield = "assignment"
+		fields = ["status"]
+		not_attempted = "Not Attempted"
+	elif assessment_type == "LMS Quiz":
+		doctype = "LMS Quiz Submission"
+		docfield = "quiz"
+		fields = ["percentage"]
+		not_attempted = 0
+
+	filters = {}
+	filters[docfield] = assessment
+	filters["member"] = member
+
+	attempt = frappe.db.exists(doctype, filters)
+	if attempt:
+		attempt_details = frappe.db.get_value(doctype, filters, fields)
+		if assessment_type == "LMS Quiz":
+			result = "Failed"
+			passing_percentage = frappe.db.get_value(
+				"LMS Quiz", assessment, "passing_percentage"
+			)
+			if attempt_details >= passing_percentage:
+				result = "Passed"
+		else:
+			result = attempt_details
+		return frappe._dict(
+			{
+				"status": attempt_details,
+				"result": result,
+			}
+		)
+	else:
+		return frappe._dict(
+			{
+				"status": not_attempted,
+				"result": "Failed",
+			}
+		)
 
 
 @frappe.whitelist()
@@ -1724,18 +1736,20 @@ def enroll_in_course(payment_name, course):
 @frappe.whitelist()
 def enroll_in_batch(batch, payment_name=None):
 	if not frappe.db.exists(
-		"Batch Student", {"parent": batch, "student": frappe.session.user}
+		"LMS Batch Enrollment", {"batch": batch, "member": frappe.session.user}
 	):
-		student = frappe.new_doc("Batch Student")
-		current_count = frappe.db.count("Batch Student", {"parent": batch})
+		batch_doc = frappe.db.get_value(
+			"LMS Batch", batch, ["name", "seat_count"], as_dict=True
+		)
+		students = frappe.db.count("LMS Batch Enrollment", {"batch": batch})
+		if batch_doc.seat_count and students >= batch_doc.seat_count:
+			frappe.throw(_("The batch is full. Please contact the Administrator."))
 
-		student.update(
+		new_student = frappe.new_doc("LMS Batch Enrollment")
+		new_student.update(
 			{
-				"student": frappe.session.user,
-				"parent": batch,
-				"parenttype": "LMS Batch",
-				"parentfield": "students",
-				"idx": current_count + 1,
+				"member": frappe.session.user,
+				"batch": batch,
 			}
 		)
 
@@ -1743,14 +1757,13 @@ def enroll_in_batch(batch, payment_name=None):
 			payment = frappe.db.get_value(
 				"LMS Payment", payment_name, ["name", "source"], as_dict=True
 			)
-			student.update(
+			new_student.update(
 				{
 					"payment": payment.name,
 					"source": payment.source,
 				}
 			)
-
-		student.save(ignore_permissions=True)
+		new_student.save()
 
 
 @frappe.whitelist()
@@ -1839,3 +1852,96 @@ def enroll_in_program_course(program, course):
 	)
 	enrollment.save()
 	return enrollment
+
+
+@frappe.whitelist(allow_guest=True)
+def get_batches(filters=None, start=0, page_length=20, order_by="start_date"):
+	if not filters:
+		filters = {}
+
+	if filters.get("enrolled"):
+		enrolled_batches = frappe.get_all(
+			"LMS Batch Enrollment", {"member": frappe.session.user}, pluck="batch"
+		)
+		filters.update({"name": ["in", enrolled_batches]})
+		del filters["enrolled"]
+
+	batches = frappe.get_all(
+		"LMS Batch",
+		filters=filters,
+		fields=[
+			"name",
+			"title",
+			"description",
+			"seat_count",
+			"paid_batch",
+			"amount",
+			"amount_usd",
+			"currency",
+			"start_date",
+			"end_date",
+			"start_time",
+			"end_time",
+			"timezone",
+			"published",
+			"category",
+		],
+		order_by=order_by,
+		start=start,
+		page_length=page_length,
+	)
+
+	batches = filter_batches_based_on_start_time(batches, filters)
+	batches = get_batch_card_details(batches)
+	return batches
+
+
+def filter_batches_based_on_start_time(batches, filters):
+	batchType = get_batch_type(filters)
+	if batchType == "upcoming":
+		batches_to_remove = [
+			batch
+			for batch in batches
+			if getdate(batch.start_date) == getdate()
+			and get_time_str(batch.start_time) < nowtime()
+		]
+		batches = [batch for batch in batches if batch not in batches_to_remove]
+	elif batchType == "archived":
+		batches_to_remove = [
+			batch
+			for batch in batches
+			if getdate(batch.start_date) == getdate()
+			and get_time_str(batch.start_time) >= nowtime()
+		]
+		batches = [batch for batch in batches if batch not in batches_to_remove]
+	return batches
+
+
+def get_batch_type(filters):
+	start_date_filter = filters.get("start_date")
+	batchType = None
+	if start_date_filter:
+		sign = start_date_filter[0]
+		if ">" in sign:
+			batchType = "upcoming"
+		elif "<" in sign:
+			batchType = "archived"
+
+	return batchType
+
+
+def get_batch_card_details(batches):
+	for batch in batches:
+		batch.instructors = get_instructors(batch.name)
+		students_count = frappe.db.count("LMS Batch Enrollment", {"batch": batch.name})
+
+		if batch.seat_count:
+			batch.seats_left = batch.seat_count - students_count
+
+		if batch.paid_batch and batch.start_date >= getdate():
+			batch.amount, batch.currency = check_multicurrency(
+				batch.amount, batch.currency, None, batch.amount_usd
+			)
+			batch.price = fmt_money(batch.amount, 0, batch.currency)
+
+	return batches

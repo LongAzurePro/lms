@@ -133,8 +133,8 @@
 								</div>
 								<FormControl
 									v-model="newTag"
-									:placeholder="__('Keywords for the course')"
-									class="w-52"
+									:placeholder="__('Add a keyword and then press enter')"
+									class="w-72"
 									@keyup.enter="updateTags()"
 									id="tags"
 								/>
@@ -288,6 +288,7 @@ const course = reactive({
 	video_link: '',
 	course_image: null,
 	tags: '',
+	category: '',
 	published: false,
 	published_on: '',
 	featured: false,
@@ -434,9 +435,9 @@ const submitCourse = () => {
 			onSuccess(data) {
 				capture('course_created')
 				showToast('Success', 'Course created successfully', 'check')
-				if (!settingsStore.onboardingDetails.data?.is_onboarded) {
+				/* if (!settingsStore.onboardingDetails.data?.is_onboarded) {
 					settingsStore.onboardingDetails.reload()
-				}
+				} */
 				router.push({
 					name: 'CourseForm',
 					params: { courseName: data.name },

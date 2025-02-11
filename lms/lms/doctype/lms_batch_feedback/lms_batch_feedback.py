@@ -1,9 +1,9 @@
-# Copyright (c) 2022, Frappe and contributors
+# Copyright (c) 2025, Frappe and contributors
 # For license information, please see license.txt
 
-import frappe
+# import frappe
 from frappe.model.document import Document
 
 
-class BatchStudent(Document):
+class LMSBatchFeedback(Document):
 	pass
